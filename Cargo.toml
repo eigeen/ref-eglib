@@ -1,5 +1,5 @@
 [package]
-name = "ref-eigeen-ext"
+name = "ref-eglib"
 version = "0.1.0"
 edition = "2024"
 
@@ -13,7 +13,7 @@ anyhow = "1.0"
 mlua = { version = "0.10", features = ["lua54", "vendored", "send"] }
 thiserror = "2.0"
 parking_lot = "0.12"
-windows = { version = "0.60", features = [
+windows = { version = "0.61", features = [
     "Win32_System_SystemServices",
     "Win32_System_Memory",
     "Win32_System_ProcessStatus",

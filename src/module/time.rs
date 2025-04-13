@@ -14,7 +14,9 @@ impl LuaModule for TimeModule {
 impl LuaUserData for TimeModule {
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
         // Get current time. Simple and high precision.
-        methods.add_function("instant", |_, ()| Ok(LuaInstant(std::time::Instant::now())));
+        methods.add_function("instant", |_, _this: LuaValue| {
+            Ok(LuaInstant(std::time::Instant::now()))
+        });
     }
 }
 

@@ -33,16 +33,14 @@ fn main_entry() -> anyhow::Result<()> {
     Ok(())
 }
 
-unsafe extern "C" fn on_lua_state_created(lua_state_ptr: *mut *mut c_void) {
-    if let Err(e) =
-        module::EgLib::instance().register_lua(lua_state_ptr as *mut mlua::ffi::lua_State)
-    {
+unsafe extern "C" fn on_lua_state_created(lua_state_ptr: *mut c_void) {
+    if let Err(e) = module::EgLib::instance().mount(lua_state_ptr as *mut mlua::ffi::lua_State) {
         error!("Failed to initialize lua module: {}", e);
     };
 }
 
-unsafe extern "C" fn on_lua_state_destroyed(lua_state_ptr: *mut *mut c_void) {
-    module::EgLib::instance().destroy_lua(lua_state_ptr as *mut mlua::ffi::lua_State);
+unsafe extern "C" fn on_lua_state_destroyed(lua_state_ptr: *mut c_void) {
+    module::EgLib::instance().unmount(lua_state_ptr as *mut mlua::ffi::lua_State);
 }
 
 #[unsafe(no_mangle)]

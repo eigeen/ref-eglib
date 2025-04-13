@@ -37,6 +37,9 @@ impl LuaUserData for LuaPtr {
         methods.add_meta_method(LuaMetaMethod::Sub, |_, this, other: LuaPtr| {
             Ok(Self::new(this.to_u64().wrapping_sub(other.to_u64())))
         });
+        methods.add_meta_method(LuaMetaMethod::Eq, |_, this, other: LuaPtr| {
+            Ok(this.to_u64() == other.to_u64())
+        });
 
         // 转换为 Lua 原生 Integer 类型
         methods.add_method("to_integer", |_, this, ()| {

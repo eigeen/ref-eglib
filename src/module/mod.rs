@@ -1,19 +1,14 @@
 mod luaptr;
+mod memory;
 mod time;
 
-use std::{
-    collections::HashMap,
-    sync::{Arc, LazyLock},
-};
+use std::sync::{Arc, LazyLock};
 
-use log::error;
 use mlua::prelude::*;
 use parking_lot::Mutex;
 use reframework_api_rs::RefAPI;
 
-const ON_DESTROY_FUNC: &str = "__on_destroy";
-const GET_STATE_PTR_FUNC: &str = "__get_state_ptr";
-const REGISTER_PTR_KEY: &str = "__register_ptr";
+const LIB_MODULE_NAME: &str = "eglib";
 
 pub trait LuaModule {
     fn register_library(lua: &mlua::Lua, registry: &mlua::Table) -> mlua::Result<()>;
@@ -23,7 +18,7 @@ pub type SharedLua = Arc<Lua>;
 
 #[derive(Default)]
 pub struct EgLib {
-    lua_states: Mutex<HashMap<u64, SharedLua>>,
+    lua_state: Mutex<Option<SharedLua>>,
 }
 
 impl LuaModule for EgLib {
@@ -33,18 +28,12 @@ impl LuaModule for EgLib {
         // sub modules
         time::TimeModule::register_library(lua, &core_table)?;
         luaptr::LuaPtr::register_library(lua, &core_table)?;
+        memory::MemoryModule::register_library(lua, &core_table)?;
 
-        registry.set("eglib", core_table)?;
+        registry.set(LIB_MODULE_NAME, core_table)?;
 
-        // _G
-        let globals = lua.globals();
-        unsafe {
-            globals.set(
-                GET_STATE_PTR_FUNC,
-                lua.create_c_function(lua_get_state_ptr)?,
-            )?;
-        }
-        globals.set(REGISTER_PTR_KEY, EgLib::get_state_ptr(lua)?)?;
+        // // _G
+        // let globals = lua.globals();
 
         Ok(())
     }
@@ -56,34 +45,20 @@ impl EgLib {
         &EGLIB
     }
 
-    pub fn register_lua(&self, lua_state: *mut mlua::ffi::lua_State) -> LuaResult<()> {
+    pub fn mount(&self, lua_state: *mut mlua::ffi::lua_State) -> LuaResult<()> {
         let lua = unsafe { Lua::init_from_ptr(lua_state) };
         let globals = lua.globals();
         EgLib::register_library(&lua, &globals)?;
 
-        let mut states = self.lua_states.lock();
-        states.insert(lua_state as u64, Arc::new(lua));
+        let mut states = self.lua_state.lock();
+        states.replace(Arc::new(lua));
 
         Ok(())
     }
 
-    pub fn destroy_lua(&self, lua_state: *mut mlua::ffi::lua_State) {
-        let mut states = self.lua_states.lock();
-        let state_addr = if states.contains_key(&(lua_state as u64)) {
-            lua_state as u64
-        } else {
-            // try to use register ptr
-            let lua = unsafe { Lua::init_from_ptr(lua_state) };
-            EgLib::get_state_register_ptr(&lua).unwrap_or(0)
-        };
-
-        let removed = states.remove(&state_addr);
-        if let Some(shared_lua) = removed {
-            let result = EgLib::run_with_global_lock(&shared_lua, EgLib::invoke_on_destroy);
-            if let Err(e) = result {
-                error!("Failed to invoke on_destroy callback: {}", e);
-            }
-        }
+    pub fn unmount(&self, _lua_state: *mut mlua::ffi::lua_State) {
+        let mut state = self.lua_state.lock();
+        state.take();
     }
 
     /// Runs a closure with ReFramework global Lua lock.
@@ -98,40 +73,8 @@ impl EgLib {
         f(lua)
     }
 
-    /// 获取 lua_State 指针
-    pub fn get_state_ptr(lua: &Lua) -> LuaResult<u64> {
-        let get_state_ptr = lua.globals().get::<LuaFunction>(GET_STATE_PTR_FUNC)?;
-        let result: u64 = get_state_ptr.call(())?;
-
-        Ok(result)
+    fn get_module(lua: &Lua) -> LuaResult<LuaTable> {
+        let globals = lua.globals();
+        globals.get(LIB_MODULE_NAME)
     }
-
-    /// Get custom id of lua state.
-    ///
-    /// The id is actually the pointer to when lua_state is registered.
-    /// The address obtained by [EgLib::get_state_ptr] may change due to coroutine.
-    /// So it's recommended to use [EgLib::get_state_register_ptr] instead.
-    pub fn get_state_register_ptr(lua: &Lua) -> LuaResult<u64> {
-        lua.globals().get::<u64>(REGISTER_PTR_KEY)
-    }
-
-    /// Invokes on_destroy callback.
-    /// This functions is **no lock**, should lock it outside.
-    pub fn invoke_on_destroy(lua: &Lua) -> LuaResult<()> {
-        if let Ok(on_destroy) = lua.globals().get::<LuaFunction>(ON_DESTROY_FUNC) {
-            on_destroy.call::<()>(())?;
-        }
-        Ok(())
-    }
-}
-
-#[allow(non_snake_case)]
-unsafe extern "C-unwind" fn lua_get_state_ptr(L: *mut mlua::ffi::lua_State) -> std::ffi::c_int {
-    // lua_State 指针作为返回值 u64 类型
-    let lua_state_ptr: i64 = L as i64;
-    unsafe {
-        mlua::ffi::lua_pushinteger(L, lua_state_ptr);
-    }
-
-    1
 }
