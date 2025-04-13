@@ -20,7 +20,7 @@ outline: 'deep'
 
 从内存中读取`size`字节。
 
-### 读取数值方法
+### 读取数值方法 {#read-number-methods}
 
 `obj:read_[type]() -> number`
 

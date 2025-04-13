@@ -42,6 +42,11 @@ impl MemoryUtils {
         }
     }
 
+    pub unsafe fn get_base_module_space() -> Result<(usize, usize), MemoryError> {
+        let (base, size) = unsafe { windows_util::get_base_module_space() }?;
+        Ok((base, size))
+    }
+
     /// 自动获取主模块地址，并扫描内存，查找匹配的第一个地址
     pub fn auto_scan_first(pattern: &str) -> Result<usize, MemoryError> {
         let (base, size) = unsafe { windows_util::get_base_module_space() }?;
