@@ -1,0 +1,384 @@
+use std::{collections::HashMap, path::Path, sync::LazyLock};
+
+use bitflags::bitflags;
+use mlua::prelude::*;
+use parking_lot::Mutex;
+use serde::Deserialize;
+
+use crate::utils;
+
+use super::LuaModule;
+
+static FS_MODULE: LazyLock<Mutex<FsModule>> = LazyLock::new(|| Mutex::new(FsModule::new()));
+
+pub struct FsModule {
+    /// User granted accesses of services.
+    granted: HashMap<String, GrantState>,
+}
+
+impl LuaModule for FsModule {
+    fn register_library(lua: &Lua, registry: &LuaTable) -> LuaResult<()> {
+        let fs = lua.create_table()?;
+        fs.set(
+            "new",
+            lua.create_function(|_, (_this, name): (LuaValue, String)| Ok(FsService::new(name)))?,
+        )?;
+        fs.set(
+            "get_granted_access",
+            lua.create_function(|lua, _: LuaValue| {
+                let module = FsModule::get_module().lock();
+                let table = lua.create_table()?;
+                for (name, state) in module.granted.iter() {
+                    table.set(name.clone(), state.clone().into_lua(lua)?)?;
+                }
+
+                Ok(table)
+            })?,
+        )?;
+
+        registry.set("fs", fs)?;
+        Ok(())
+    }
+}
+
+impl FsModule {
+    fn new() -> Self {
+        Self {
+            granted: HashMap::new(),
+        }
+    }
+
+    fn get_module() -> &'static Mutex<FsModule> {
+        &FS_MODULE
+    }
+
+    fn accept_access(&mut self, service_name: &str, access: Access) {
+        let acceptions = &mut self
+            .granted
+            .entry(service_name.to_string())
+            .or_default()
+            .acceptions;
+        if !acceptions
+            .iter()
+            .any(|a| a.path == access.path && a.permissions == access.permissions)
+        {
+            acceptions.push(access);
+        }
+    }
+
+    fn reject_access(&mut self, service_name: &str, access: Access) {
+        self.granted
+            .entry(service_name.to_string())
+            .or_default()
+            .rejections
+            .push(access);
+    }
+
+    fn clear_access(&mut self, service_name: Option<&str>) {
+        if let Some(srv_name) = service_name {
+            self.granted.remove(srv_name);
+        } else {
+            self.granted.clear();
+        }
+    }
+
+    fn is_access_allowed(
+        &self,
+        service_name: &str,
+        path: &str,
+        perm: Permissions,
+    ) -> (bool, String) {
+        let Some(state) = self.granted.get(service_name) else {
+            log::warn!("Service not found: {}", service_name);
+            return (false, String::new());
+        };
+        // if path not exists, rejection.
+        let abs_path = utils::normalize_path(path);
+        let abs_path_str = abs_path.to_string_lossy().to_string();
+
+        for reject in &state.rejections {
+            // Check exact path rejections
+            if reject.path == abs_path_str && reject.permissions.contains(perm) {
+                return (false, abs_path_str);
+            }
+            // Check directory rejections
+            if reject.is_dir
+                && abs_path.starts_with(&reject.path)
+                && reject.permissions.contains(perm)
+            {
+                return (false, abs_path_str);
+            }
+        }
+
+        for accept in &state.acceptions {
+            // Check exact path acceptances
+            if accept.path == abs_path_str && accept.permissions.contains(perm) {
+                return (true, abs_path_str);
+            }
+            // Check directory acceptances
+            if accept.is_dir
+                && abs_path.starts_with(&accept.path)
+                && accept.permissions.contains(perm)
+            {
+                return (true, abs_path_str);
+            }
+        }
+
+        (false, abs_path_str)
+    }
+}
+
+#[derive(Clone, Default)]
+struct GrantState {
+    acceptions: Vec<Access>,
+    rejections: Vec<Access>,
+}
+
+impl IntoLua for GrantState {
+    fn into_lua(self, lua: &Lua) -> LuaResult<LuaValue> {
+        let table = lua.create_table()?;
+        table.set("acceptions", self.acceptions.into_lua(lua)?)?;
+        table.set("rejections", self.rejections.into_lua(lua)?)?;
+        Ok(LuaValue::Table(table))
+    }
+}
+
+bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    struct Permissions: u8 {
+        const READ = 0b01;
+        const WRITE = 0b10;
+    }
+}
+
+impl IntoLua for Permissions {
+    fn into_lua(self, lua: &Lua) -> LuaResult<LuaValue> {
+        let mut string = String::new();
+        if self.contains(Permissions::READ) {
+            string.push('r');
+        }
+        if self.contains(Permissions::WRITE) {
+            string.push('w');
+        }
+
+        string.into_lua(lua)
+    }
+}
+
+impl Permissions {
+    fn from_char(c: char) -> Option<Permissions> {
+        match c {
+            'r' => Some(Permissions::READ),
+            'w' => Some(Permissions::WRITE),
+            _ => None,
+        }
+    }
+
+    fn from_str(s: &str) -> Option<Permissions> {
+        let mut perm = Permissions::empty();
+        for c in s.chars() {
+            if let Some(p) = Permissions::from_char(c) {
+                perm |= p;
+            } else {
+                return None;
+            }
+        }
+        Some(perm)
+    }
+}
+
+#[derive(Debug, Clone)]
+struct Access {
+    path: String,
+    is_dir: bool,
+    permissions: Permissions,
+}
+
+impl IntoLua for Access {
+    fn into_lua(self, lua: &Lua) -> LuaResult<LuaValue> {
+        let table = lua.create_table()?;
+        table.set("path", self.path.into_lua(lua)?)?;
+        table.set("is_dir", self.is_dir.into_lua(lua)?)?;
+        table.set("permissions", self.permissions.into_lua(lua)?)?;
+        Ok(LuaValue::Table(table))
+    }
+}
+
+#[derive(Deserialize)]
+struct RequestAccessOptions {
+    permission: String,
+    directory: Option<String>,
+    file_name: Option<String>,
+    filters: Option<Vec<DialogFilter>>,
+    #[serde(default)]
+    folder: bool,
+    #[serde(default)]
+    multiple: bool,
+    /// If user granted before, grant automatically without dialog.
+    #[serde(default)]
+    auto_grant: bool,
+}
+
+#[derive(Deserialize)]
+struct DialogFilter {
+    name: String,
+    extensions: Vec<String>,
+}
+
+impl FromLua for RequestAccessOptions {
+    fn from_lua(value: LuaValue, lua: &Lua) -> LuaResult<Self> {
+        lua.from_value(value)
+    }
+}
+
+struct FsService {
+    name: String,
+}
+
+impl LuaUserData for FsService {
+    fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
+        methods.add_method(
+            "request_access",
+            |_, this, options: RequestAccessOptions| {
+                // validate permission string
+                let Some(perm) = Permissions::from_str(&options.permission) else {
+                    return Err(LuaError::external(format!(
+                        "Invalid permission string: {}. Use r/w/rw.",
+                        options.permission
+                    )));
+                };
+
+                let mut module = FsModule::get_module().lock();
+
+                // check if access already granted
+                if options.auto_grant && !options.multiple {
+                    if options.folder && options.directory.is_some() {
+                        let (ok, path) = module.is_access_allowed(
+                            &this.name,
+                            options.directory.as_ref().unwrap(),
+                            perm,
+                        );
+                        if ok {
+                            return Ok(vec![path]);
+                        }
+                    } else if !options.folder
+                        && options.directory.is_some()
+                        && options.file_name.is_some()
+                    {
+                        let dir_path = options.directory.as_ref().unwrap();
+                        let file_name = options.file_name.as_ref().unwrap();
+                        let (ok, path) = module.is_access_allowed(
+                            &this.name,
+                            Path::new(dir_path).join(file_name).to_str().unwrap(),
+                            perm,
+                        );
+                        if ok {
+                            return Ok(vec![path]);
+                        }
+                    }
+                }
+
+                let mut dialog = rfd::FileDialog::new();
+                if let Some(filters) = options.filters {
+                    for filter in filters {
+                        dialog = dialog.add_filter(filter.name, &filter.extensions);
+                    }
+                }
+                if let Some(dir) = options.directory {
+                    dialog = dialog.set_directory(dir);
+                }
+                if let Some(file_name) = options.file_name {
+                    dialog = dialog.set_file_name(file_name);
+                }
+
+                let result = match (options.folder, options.multiple) {
+                    (true, true) => dialog.pick_folders(),
+                    (true, false) => dialog.pick_folder().map(|p| vec![p]),
+                    (false, true) => dialog.pick_files(),
+                    (false, false) => dialog.pick_file().map(|p| vec![p]),
+                };
+
+                match result {
+                    Some(paths) => {
+                        for path in &paths {
+                            let abs_path = utils::normalize_path(path);
+                            let access = Access {
+                                path: abs_path.to_string_lossy().to_string(),
+                                permissions: perm,
+                                is_dir: options.folder,
+                            };
+                            module.accept_access(&this.name, access);
+                        }
+                        Ok(paths
+                            .iter()
+                            .map(|p| p.to_string_lossy().to_string())
+                            .collect())
+                    }
+                    None => Ok(vec![]),
+                }
+            },
+        );
+        methods.add_method("read_text_file", |_, this, path_str: String| {
+            let path = Path::new(&path_str);
+            if !path.is_file() {
+                return Err(LuaError::external(format!(
+                    "File {} not found.",
+                    path.display()
+                )));
+            }
+
+            let module = FsModule::get_module().lock();
+            let (ok, _) = module.is_access_allowed(&this.name, &path_str, Permissions::READ);
+            if !ok {
+                return Err(LuaError::external(format!(
+                    "Access denied to file {}.",
+                    path.display()
+                )));
+            };
+
+            let content = std::fs::read_to_string(path).map_err(|e| {
+                LuaError::external(format!("Failed to read file {}: {}", path.display(), e))
+            })?;
+
+            Ok(content)
+        });
+        methods.add_method(
+            "write_text_file",
+            |_, this, (path_str, content): (String, String)| {
+                let path = Path::new(&path_str);
+
+                let module = FsModule::get_module().lock();
+                let (ok, abs_path) =
+                    module.is_access_allowed(&this.name, &path_str, Permissions::WRITE);
+                if !ok {
+                    return Err(LuaError::external(format!(
+                        "Access denied to file {}.",
+                        abs_path
+                    )));
+                };
+
+                let parent = Path::new(&abs_path).parent().unwrap();
+                if !parent.exists() {
+                    std::fs::create_dir_all(parent).map_err(|e| {
+                        LuaError::external(format!(
+                            "Failed to create directory {}: {}",
+                            parent.display(),
+                            e
+                        ))
+                    })?;
+                }
+                std::fs::write(path, content).map_err(|e| {
+                    LuaError::external(format!("Failed to write file {}: {}", abs_path, e))
+                })?;
+
+                Ok(())
+            },
+        );
+    }
+}
+
+impl FsService {
+    fn new(name: String) -> Self {
+        Self { name }
+    }
+}

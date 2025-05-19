@@ -20,4 +20,6 @@ windows = { version = "0.61", features = [
     "Win32_System_Threading",
 ] }
 bitflags = "2.9"
-serde = { version = "1.0.219", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+rfd = "0.15.3"
+rand = "0.9.1"

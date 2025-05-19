@@ -1,5 +1,3 @@
-use parking_lot::Mutex;
-
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, thiserror::Error)]
@@ -28,8 +26,8 @@ pub enum Error {
     // LuaVMNotFound,
     #[error("Invalid argument: expected {0}, got {1}")]
     InvalidValue(&'static str, String),
-    #[error("Failed to parse integer from '{0}'")]
-    ParseInt(String),
+    // #[error("Failed to parse integer from '{0}'")]
+    // ParseInt(String),
     // #[error(
     //     "Require LuaFramework version {1}, but current version is {0}, please update LuaFramework or script."
     // )]
@@ -48,27 +46,4 @@ pub enum Error {
     // ProcAddressNotFound(String),
     // #[error("Game window not found")]
     // GameWindowNotFound,
-}
-
-#[derive(Debug, Clone)]
-pub struct LastErrorInfo {
-    pub error: String,
-    pub time: std::time::Instant,
-}
-
-static LAST_ERROR: Mutex<Option<LastErrorInfo>> = Mutex::new(None);
-
-pub fn get_last_error() -> Option<LastErrorInfo> {
-    LAST_ERROR.lock().clone()
-}
-
-pub fn set_last_error(err: String) {
-    *LAST_ERROR.lock() = Some(LastErrorInfo {
-        error: err,
-        time: std::time::Instant::now(),
-    });
-}
-
-pub fn clear_last_error() {
-    *LAST_ERROR.lock() = None;
 }

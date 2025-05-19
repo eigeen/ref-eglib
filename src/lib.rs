@@ -9,6 +9,7 @@ use log::{error, info};
 mod error;
 mod memory;
 mod module;
+mod utils;
 
 fn main_entry() -> anyhow::Result<()> {
     let refapi = RefAPI::instance().unwrap();
