@@ -32,21 +32,22 @@ re.on_draw_ui(function()
 
     local data = eglib.fs:get_granted_access()
     if data then
-        imgui.tree_node("Granted File System Access")
-        for service_name, states in pairs(data) do
-            imgui.text(service_name)
-            if states.acceptions then
-                imgui.text("- Accepted")
-                for _, state in ipairs(states.acceptions) do
-                    imgui.text("  - " .. state.path)
-                end
-            elseif states.rejections then
-                imgui.text("- Rejected")
-                for _, state in ipairs(states.rejections) do
-                    imgui.text("  - " .. state.path)
+        if imgui.tree_node("Granted File System Access") then
+            for service_name, states in pairs(data) do
+                imgui.text(service_name)
+                if states.acceptions then
+                    imgui.text("- Accepted")
+                    for _, state in ipairs(states.acceptions) do
+                        imgui.text("  - " .. state.path)
+                    end
+                elseif states.rejections then
+                    imgui.text("- Rejected")
+                    for _, state in ipairs(states.rejections) do
+                        imgui.text("  - " .. state.path)
+                    end
                 end
             end
+            imgui.tree_pop()
         end
-        imgui.tree_pop()
     end
 end)

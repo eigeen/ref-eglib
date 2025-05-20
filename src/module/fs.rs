@@ -92,34 +92,34 @@ impl FsModule {
             log::warn!("Service not found: {}", service_name);
             return (false, String::new());
         };
-        // if path not exists, rejection.
+
         let abs_path = utils::normalize_path(path);
         let abs_path_str = abs_path.to_string_lossy().to_string();
 
-        for reject in &state.rejections {
-            // Check exact path rejections
-            if reject.path == abs_path_str && reject.permissions.contains(perm) {
-                return (false, abs_path_str);
+        // Helper function to check path matches
+        fn path_matches(pattern: &str, target: &str) -> bool {
+            if pattern.ends_with("/**") {
+                let base = pattern.trim_end_matches("**").trim_end_matches('/');
+                target.starts_with(base)
+                    && (target == base || target.starts_with(&format!("{}/", base)))
+            } else if pattern.ends_with("/*") {
+                let base = pattern.trim_end_matches('*').trim_end_matches('/');
+                target.starts_with(base) && !target[base.len()..].contains('/')
+            } else {
+                pattern == target
             }
-            // Check directory rejections
-            if reject.is_dir
-                && abs_path.starts_with(&reject.path)
-                && reject.permissions.contains(perm)
-            {
+        }
+
+        // Check rejections first
+        for reject in &state.rejections {
+            if reject.permissions.contains(perm) && path_matches(&reject.path, &abs_path_str) {
                 return (false, abs_path_str);
             }
         }
 
+        // Then check acceptions
         for accept in &state.acceptions {
-            // Check exact path acceptances
-            if accept.path == abs_path_str && accept.permissions.contains(perm) {
-                return (true, abs_path_str);
-            }
-            // Check directory acceptances
-            if accept.is_dir
-                && abs_path.starts_with(&accept.path)
-                && accept.permissions.contains(perm)
-            {
+            if accept.permissions.contains(perm) && path_matches(&accept.path, &abs_path_str) {
                 return (true, abs_path_str);
             }
         }
@@ -190,7 +190,6 @@ impl Permissions {
 #[derive(Debug, Clone)]
 struct Access {
     path: String,
-    is_dir: bool,
     permissions: Permissions,
 }
 
@@ -198,7 +197,6 @@ impl IntoLua for Access {
     fn into_lua(self, lua: &Lua) -> LuaResult<LuaValue> {
         let table = lua.create_table()?;
         table.set("path", self.path.into_lua(lua)?)?;
-        table.set("is_dir", self.is_dir.into_lua(lua)?)?;
         table.set("permissions", self.permissions.into_lua(lua)?)?;
         Ok(LuaValue::Table(table))
     }
@@ -214,6 +212,8 @@ struct RequestAccessOptions {
     folder: bool,
     #[serde(default)]
     multiple: bool,
+    #[serde(default)]
+    recursive: bool,
     /// If user granted before, grant automatically without dialog.
     #[serde(default)]
     auto_grant: bool,
@@ -239,7 +239,7 @@ impl LuaUserData for FsService {
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
         methods.add_method(
             "request_access",
-            |_, this, options: RequestAccessOptions| {
+            |_, this, mut options: RequestAccessOptions| {
                 // validate permission string
                 let Some(perm) = Permissions::from_str(&options.permission) else {
                     return Err(LuaError::external(format!(
@@ -247,6 +247,13 @@ impl LuaUserData for FsService {
                         options.permission
                     )));
                 };
+
+                if let Some(ref dir) = options.directory {
+                    let abs_dir = utils::normalize_path(dir);
+                    options
+                        .directory
+                        .replace(abs_dir.to_string_lossy().to_string());
+                }
 
                 let mut module = FsModule::get_module().lock();
 
@@ -302,10 +309,17 @@ impl LuaUserData for FsService {
                     Some(paths) => {
                         for path in &paths {
                             let abs_path = utils::normalize_path(path);
+                            let path_str = if options.folder {
+                                let mut path = abs_path.to_string_lossy().to_string();
+                                path.push_str(if options.recursive { "/**" } else { "/*" });
+                                path
+                            } else {
+                                abs_path.to_string_lossy().to_string()
+                            };
+
                             let access = Access {
-                                path: abs_path.to_string_lossy().to_string(),
+                                path: path_str,
                                 permissions: perm,
-                                is_dir: options.folder,
                             };
                             module.accept_access(&this.name, access);
                         }
