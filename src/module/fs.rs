@@ -208,6 +208,7 @@ struct RequestAccessOptions {
     directory: Option<String>,
     file_name: Option<String>,
     filters: Option<Vec<DialogFilter>>,
+    title: Option<String>,
     #[serde(default)]
     folder: bool,
     #[serde(default)]
@@ -296,6 +297,14 @@ impl LuaUserData for FsService {
                 }
                 if let Some(file_name) = options.file_name {
                     dialog = dialog.set_file_name(file_name);
+                }
+                if let Some(title) = options.title {
+                    let title = if options.recursive {
+                        format!("[Recursive] {}", title)
+                    } else {
+                        title
+                    };
+                    dialog = dialog.set_title(title);
                 }
 
                 let result = match (options.folder, options.multiple) {
