@@ -78,6 +78,8 @@ impl EgLib {
     pub fn mount(&self, lua_state: *mut mlua::ffi::lua_State) -> LuaResult<()> {
         let lua = unsafe { Lua::init_from_ptr(lua_state) };
         let globals = lua.globals();
+        // reset privileged key
+        PRIVILEGED.lock().reset();
         // register eglib module
         EgLib::register_library(&lua, &globals)?;
         // run lua scripts
@@ -157,6 +159,12 @@ impl Privileged {
         self.key_once = true;
 
         self.key.clone()
+    }
+
+    fn reset(&mut self) {
+        self.key_once = false;
+        self.key.clear();
+        self.privileged = false;
     }
 
     fn privileged(&self) -> bool {
