@@ -7,11 +7,17 @@ edition = "2024"
 crate-type = ["cdylib"]
 
 [dependencies]
-reframework_api_rs = { path = "../reframework-api-rs" }
+reframework_api_rs = { git = "https://github.com/paean-of-guidance/reframework-api-rs.git" }
+# mlua = { path = "../mlua-for-ref", features = ["lua54", "vendored", "send", "serialize"] }
+mlua = { git = "https://github.com/eigeen/mlua-for-ref.git", features = [
+    "lua54",
+    "vendored",
+    "send",
+    "serialize",
+] }
+
 log = "0.4"
 anyhow = "1.0"
-# mlua = { version = "0.10", features = ["lua54", "vendored", "send", "serialize"] }
-mlua = { path = "../mlua-for-ref", features = ["lua54", "vendored", "send", "serialize"] }
 thiserror = "2.0"
 parking_lot = "0.12"
 windows = { version = "0.61", features = [
