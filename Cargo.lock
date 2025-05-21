@@ -623,6 +623,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "itoa"
+version = "1.0.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4a5f13b858c8d314ee3e8f639011f7ccefe71f97f96e50151fb991f267928e2c"
+
+[[package]]
 name = "js-sys"
 version = "0.3.77"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -674,18 +680,18 @@ checksum = "13dc2df351e3202783a1fe0d44375f7295ffb4049267b0f3018346dc122a1d94"
 
 [[package]]
 name = "lua-src"
-version = "547.0.0"
+version = "543.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1edaf29e3517b49b8b746701e5648ccb5785cde1c119062cbabbc5d5cd115e42"
+checksum = "b72914332bf1ef0e1185b229135d639f11a4a8ccfd32852db8e52419c04c0247"
 dependencies = [
  "cc",
 ]
 
 [[package]]
 name = "luajit-src"
-version = "210.5.12+a4f56a4"
+version = "210.6.0+eec7a80"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3a8e7962a5368d5f264d045a5a255e90f9aa3fc1941ae15a8d2940d42cac671"
+checksum = "7e83e16be7f0b9a6b1450b0ea93bbffc0ebd5781ad955c829db61a4c872e9b0f"
 dependencies = [
  "cc",
  "which",
@@ -708,9 +714,7 @@ dependencies = [
 
 [[package]]
 name = "mlua"
-version = "0.10.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3f763c1041eff92ffb5d7169968a327e1ed2ebfe425dac0ee5a35f29082534b"
+version = "0.10.4"
 dependencies = [
  "bstr",
  "either",
@@ -719,15 +723,14 @@ dependencies = [
  "num-traits",
  "parking_lot",
  "rustc-hash",
+ "rustversion",
  "serde",
  "serde-value",
 ]
 
 [[package]]
 name = "mlua-sys"
-version = "0.6.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1901c1a635a22fe9250ffcc4fcc937c16b47c2e9e71adba8784af8bca1f69594"
+version = "0.7.0"
 dependencies = [
  "cc",
  "cfg-if",
@@ -1025,6 +1028,7 @@ dependencies = [
  "reframework_api_rs",
  "rfd",
  "serde",
+ "serde_json",
  "thiserror",
  "windows",
 ]
@@ -1108,6 +1112,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eded382c5f5f786b989652c49544c4877d9f015cc22e145a5ea8ea66c2921cd2"
 
 [[package]]
+name = "ryu"
+version = "1.0.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "28d3b2b1366ec20994f1fd18c3c594f05c5dd4bc44d8bb0c1c632c8d6829481f"
+
+[[package]]
 name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1141,6 +1151,18 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "serde_json"
+version = "1.0.140"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "20068b6e96dc6c9bd23e01df8827e6c7e1f2fddd43c21810382803c136b99373"
+dependencies = [
+ "itoa",
+ "memchr",
+ "ryu",
+ "serde",
 ]
 
 [[package]]
