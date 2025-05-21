@@ -21,6 +21,7 @@ export default defineConfig({
         items: [
           { text: "memory", link: "memory" },
           { text: "time", link: "time" },
+          { text: "fs", link: "fs" },
         ],
       },
       {
@@ -30,6 +31,7 @@ export default defineConfig({
           { text: "LuaPtr", link: "luaptr" },
           { text: "Instant", link: "instant" },
           { text: "Duration", link: "duration" },
+          { text: "FsService", link: "FsService" },
         ],
       },
     ],

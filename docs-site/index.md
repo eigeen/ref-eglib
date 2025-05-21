@@ -4,6 +4,8 @@ layout: doc
 
 # EgLib API Reference
 
+Plugin version: 0.2.0 
+
 ## API Design
 
 Due to the potential confusion between Lua static method calls (using `.`) and instance method calls (using `:`), we have decided to have module functions use instance methods (i.e., called with `:`) as much as possible to prevent user confusion, event if the function is a static method.
