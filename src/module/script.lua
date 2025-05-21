@@ -26,7 +26,7 @@ local function parse_permissions(perm_str)
 end
 
 re.on_draw_ui(function()
-    if not imgui.collapsing_header("Eglib") then
+    if not imgui.tree_node("Eglib") then
         return
     end
 
@@ -50,4 +50,6 @@ re.on_draw_ui(function()
             imgui.tree_pop()
         end
     end
+
+    imgui.tree_pop()
 end)
