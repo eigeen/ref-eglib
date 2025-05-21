@@ -1,4 +1,10 @@
-use std::{collections::HashMap, path::Path, sync::LazyLock};
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::{Read, Write},
+    path::{Path, PathBuf},
+    sync::LazyLock,
+};
 
 use bitflags::bitflags;
 use mlua::prelude::*;
@@ -85,9 +91,11 @@ impl FsModule {
     fn is_access_allowed(
         &self,
         service_name: &str,
-        path: &str,
+        path: impl AsRef<Path>,
         perm: Permissions,
     ) -> (bool, String) {
+        let path = path.as_ref();
+
         let Some(state) = self.granted.get(service_name) else {
             log::warn!("Service not found: {}", service_name);
             return (false, String::new());
@@ -218,6 +226,9 @@ struct RequestAccessOptions {
     /// If user granted before, grant automatically without dialog.
     #[serde(default)]
     auto_grant: bool,
+    /// Save file mode, allows to select an unexisting file.
+    #[serde(default)]
+    save_file: bool,
 }
 
 #[derive(Deserialize)]
@@ -307,11 +318,15 @@ impl LuaUserData for FsService {
                     dialog = dialog.set_title(title);
                 }
 
-                let result = match (options.folder, options.multiple) {
-                    (true, true) => dialog.pick_folders(),
-                    (true, false) => dialog.pick_folder().map(|p| vec![p]),
-                    (false, true) => dialog.pick_files(),
-                    (false, false) => dialog.pick_file().map(|p| vec![p]),
+                let result = if options.save_file {
+                    dialog.save_file().map(|p| vec![p])
+                } else {
+                    match (options.folder, options.multiple) {
+                        (true, true) => dialog.pick_folders(),
+                        (true, false) => dialog.pick_folder().map(|p| vec![p]),
+                        (false, true) => dialog.pick_files(),
+                        (false, false) => dialog.pick_file().map(|p| vec![p]),
+                    }
                 };
 
                 match result {
@@ -342,25 +357,14 @@ impl LuaUserData for FsService {
             },
         );
         methods.add_method("read_text_file", |_, this, path_str: String| {
-            let path = Path::new(&path_str);
-            if !path.is_file() {
-                return Err(LuaError::external(format!(
-                    "File {} not found.",
-                    path.display()
-                )));
-            }
+            let mut file = OpenFileOptions::new(&path_str)
+                .with_service(&this.name)
+                .read()
+                .map_err(|e| e.into_lua_err())?;
 
-            let module = FsModule::get_module().lock();
-            let (ok, _) = module.is_access_allowed(&this.name, &path_str, Permissions::READ);
-            if !ok {
-                return Err(LuaError::external(format!(
-                    "Access denied to file {}.",
-                    path.display()
-                )));
-            };
-
-            let content = std::fs::read_to_string(path).map_err(|e| {
-                LuaError::external(format!("Failed to read file {}: {}", path.display(), e))
+            let mut content = String::new();
+            file.read_to_string(&mut content).map_err(|e| {
+                LuaError::external(format!("Failed to read file {}: {}", path_str, e))
             })?;
 
             Ok(content)
@@ -368,30 +372,29 @@ impl LuaUserData for FsService {
         methods.add_method(
             "write_text_file",
             |_, this, (path_str, content): (String, String)| {
-                let path = Path::new(&path_str);
+                let mut file = OpenFileOptions::new(&path_str)
+                    .with_service(&this.name)
+                    .create()
+                    .map_err(|e| e.into_lua_err())?;
 
-                let module = FsModule::get_module().lock();
-                let (ok, abs_path) =
-                    module.is_access_allowed(&this.name, &path_str, Permissions::WRITE);
-                if !ok {
-                    return Err(LuaError::external(format!(
-                        "Access denied to file {}.",
-                        abs_path
-                    )));
-                };
+                file.write_all(content.as_bytes()).map_err(|e| {
+                    LuaError::external(format!("Failed to write file {}: {}", path_str, e))
+                })?;
 
-                let parent = Path::new(&abs_path).parent().unwrap();
-                if !parent.exists() {
-                    std::fs::create_dir_all(parent).map_err(|e| {
-                        LuaError::external(format!(
-                            "Failed to create directory {}: {}",
-                            parent.display(),
-                            e
-                        ))
-                    })?;
-                }
-                std::fs::write(path, content).map_err(|e| {
-                    LuaError::external(format!("Failed to write file {}: {}", abs_path, e))
+                Ok(())
+            },
+        );
+        methods.add_method(
+            "dump_json",
+            |_, this, (path_str, data): (String, LuaValue)| {
+                let file = OpenFileOptions::new(&path_str)
+                    .with_service(&this.name)
+                    .create()
+                    .map_err(|e| e.into_lua_err())?;
+
+                let writer = std::io::BufWriter::new(file);
+                serde_json::to_writer_pretty(writer, &data).map_err(|e| {
+                    LuaError::external(format!("Failed to write JSON to file {}: {}", path_str, e))
                 })?;
 
                 Ok(())
@@ -403,5 +406,61 @@ impl LuaUserData for FsService {
 impl FsService {
     fn new(name: String) -> Self {
         Self { name }
+    }
+}
+
+struct OpenFileOptions {
+    path: PathBuf,
+    service_name: String,
+}
+
+impl OpenFileOptions {
+    fn new(path: impl AsRef<Path>) -> Self {
+        Self {
+            path: path.as_ref().to_path_buf(),
+            service_name: String::new(),
+        }
+    }
+
+    fn with_service(mut self, service_name: &str) -> Self {
+        self.service_name = service_name.to_string();
+        self
+    }
+
+    fn read(self) -> anyhow::Result<File> {
+        let module = FsModule::get_module().lock();
+        let (ok, abs_path) =
+            module.is_access_allowed(&self.service_name, &self.path, Permissions::READ);
+        if !ok {
+            anyhow::bail!("Access denied to file {}.", abs_path);
+        };
+
+        if !self.path.is_file() {
+            anyhow::bail!("File {} not found.", self.path.display());
+        }
+
+        Ok(File::open(&self.path)?)
+    }
+
+    fn create(self) -> anyhow::Result<File> {
+        let module = FsModule::get_module().lock();
+        let (ok, abs_path) =
+            module.is_access_allowed(&self.service_name, &self.path, Permissions::WRITE);
+        if !ok {
+            anyhow::bail!("Access denied to file {}.", abs_path);
+        };
+
+        let parent = Path::new(&abs_path).parent().unwrap();
+        if !parent.exists() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                LuaError::external(format!(
+                    "Failed to create directory {}: {}",
+                    parent.display(),
+                    e
+                ))
+            })?;
+        }
+
+        Ok(File::create(&self.path)?)
     }
 }
