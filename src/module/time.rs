@@ -5,22 +5,26 @@ use super::LuaModule;
 pub struct TimeModule;
 
 impl LuaModule for TimeModule {
-    fn register_library(_lua: &mlua::Lua, registry: &mlua::Table) -> mlua::Result<()> {
+    fn register_library(_lua: &Lua, registry: &LuaTable) -> LuaResult<()> {
         registry.set("time", TimeModule)?;
         Ok(())
     }
 }
 
 impl LuaUserData for TimeModule {
+    fn add_fields<F: LuaUserDataFields<Self>>(fields: &mut F) {
+        fields.add_field_function_get("datetime", |_, _| Ok(LuaDateTimeModule));
+    }
+
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
         // Get current time. Simple and high precision.
-        methods.add_function("instant", |_, _this: LuaValue| {
+        methods.add_method("instant", |_, _, ()| {
             Ok(LuaInstant(std::time::Instant::now()))
         });
     }
 }
 
-pub struct LuaInstant(pub std::time::Instant);
+struct LuaInstant(pub std::time::Instant);
 
 impl LuaUserData for LuaInstant {
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
@@ -29,7 +33,7 @@ impl LuaUserData for LuaInstant {
     }
 }
 
-pub struct LuaDuration(pub std::time::Duration);
+struct LuaDuration(pub std::time::Duration);
 
 impl LuaUserData for LuaDuration {
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
@@ -62,6 +66,49 @@ impl LuaUserData for LuaDuration {
                 ));
             }
             Ok(num)
+        });
+    }
+}
+
+struct LuaDateTimeModule;
+
+impl LuaUserData for LuaDateTimeModule {
+    fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
+        methods.add_method("now", |_, _, ()| Ok(LuaDateTime(chrono::Utc::now())));
+        methods.add_method(
+            "from_timestamp",
+            |_, _, (secs, nsecs): (i64, Option<u32>)| {
+                let datetime = chrono::DateTime::from_timestamp(secs, nsecs.unwrap_or(0))
+                    .ok_or(LuaError::external("Invalid timestamp"))?;
+                Ok(LuaDateTime(datetime))
+            },
+        );
+        methods.add_method("parse_from_rfc3339", |_, _, s: String| {
+            let datetime = chrono::DateTime::parse_from_rfc3339(&s)
+                .map_err(|e| e.into_lua_err())?
+                .to_utc();
+            Ok(LuaDateTime(datetime))
+        });
+        methods.add_method("parse_from_str", |_, _, (s, fmt): (String, String)| {
+            let datetime = chrono::DateTime::parse_from_str(&s, &fmt)
+                .map_err(|e| e.into_lua_err())?
+                .to_utc();
+            Ok(LuaDateTime(datetime))
+        });
+    }
+}
+
+struct LuaDateTime(chrono::DateTime<chrono::Utc>);
+
+impl LuaUserData for LuaDateTime {
+    fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
+        methods.add_method("timestamp", |_, this, ()| Ok(this.0.timestamp()));
+        methods.add_method("timestamp_millis", |_, this, ()| {
+            Ok(this.0.timestamp_millis())
+        });
+        methods.add_method("to_rfc3339", |_, this, ()| Ok(this.0.to_rfc3339()));
+        methods.add_method("format", |_, this, fmt: String| {
+            Ok(format!("{}", this.0.format(&fmt)))
         });
     }
 }
