@@ -384,22 +384,67 @@ impl LuaUserData for FsService {
                 Ok(())
             },
         );
-        methods.add_method(
-            "dump_json",
-            |_, this, (path_str, data): (String, LuaValue)| {
-                let file = OpenFileOptions::new(&path_str)
-                    .with_service(&this.name)
-                    .create()
-                    .map_err(|e| e.into_lua_err())?;
+        methods.add_method("mkdir", |_, this, (path_str, recursive): (String, bool)| {
+            let module = FsModule::get_module().lock();
+            let (ok, abs_path) =
+                module.is_access_allowed(&this.name, &path_str, Permissions::WRITE);
+            if !ok {
+                return Err(LuaError::external(format!(
+                    "Access denied to path {}.",
+                    abs_path
+                )));
+            };
 
-                let writer = std::io::BufWriter::new(file);
-                serde_json::to_writer_pretty(writer, &data).map_err(|e| {
-                    LuaError::external(format!("Failed to write JSON to file {}: {}", path_str, e))
-                })?;
+            if recursive {
+                std::fs::create_dir_all(&abs_path)
+            } else {
+                std::fs::create_dir(&abs_path)
+            }
+            .map_err(|e| e.into_lua_err())
+        });
+        methods.add_method("remove", |_, this, path_str: String| {
+            let module = FsModule::get_module().lock();
+            let (ok, abs_path) =
+                module.is_access_allowed(&this.name, &path_str, Permissions::WRITE);
+            if !ok {
+                return Err(LuaError::external(format!(
+                    "Access denied to path {}.",
+                    abs_path
+                )));
+            };
 
-                Ok(())
-            },
-        );
+            let path = Path::new(&abs_path);
+            if path.is_dir() {
+                std::fs::remove_dir_all(&abs_path)
+            } else {
+                std::fs::remove_file(&abs_path)
+            }
+            .map_err(|e| e.into_lua_err())
+        });
+        methods.add_method("read_dir", |_, this, path_str: String| {
+            let module = FsModule::get_module().lock();
+            let (ok, abs_path) = module.is_access_allowed(&this.name, &path_str, Permissions::READ);
+            if !ok {
+                return Err(LuaError::external(format!(
+                    "Access denied to path {}.",
+                    abs_path
+                )));
+            };
+
+            let mut files = vec![];
+            let mut dirs = vec![];
+            for entry in std::fs::read_dir(&abs_path)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_file() {
+                    files.push(path.to_string_lossy().to_string());
+                } else {
+                    dirs.push(path.to_string_lossy().to_string());
+                }
+            }
+
+            Ok((dirs, files))
+        });
     }
 }
 
