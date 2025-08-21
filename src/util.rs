@@ -1,5 +1,7 @@
 use std::path::{Component, Path, PathBuf};
 
+use rand::RngCore;
+
 pub fn normalize_path(input: impl AsRef<Path>) -> PathBuf {
     let input = input.as_ref();
     let current_dir = std::env::current_dir().expect("Failed to get current dir");
@@ -39,6 +41,11 @@ pub fn normalize_path(input: impl AsRef<Path>) -> PathBuf {
     }
 
     normalized
+}
+
+/// 生成随机u64 ID
+pub fn new_random_id() -> u64 {
+    rand::rng().next_u64()
 }
 
 #[cfg(test)]

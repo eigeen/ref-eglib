@@ -1,6 +1,6 @@
 [package]
 name = "ref-eglib"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 
 [lib]
@@ -30,4 +30,7 @@ bitflags = "2.9"
 serde = { version = "1.0", features = ["derive"] }
 rfd = "0.15"
 rand = "0.9"
-chrono = "0.4.41"
+chrono = "0.4"
+tokio = { version = "1.46.1", features = ["parking_lot", "rt-multi-thread"] }
+reqwest = { version = "0.12.22", features = ["json"] }
+serde_json = "1.0.140"

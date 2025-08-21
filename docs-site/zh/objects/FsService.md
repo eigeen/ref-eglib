@@ -36,24 +36,50 @@ outline: 'deep'
 
 写入字符串内容到文件。如果路径不存在，则会创建文件夹和文件。如果文件存在，则覆盖原有文件。
 
+### `obj:mkdir(path: string, recursive: bool)`
+
+> 版本：0.3.0
+
+需要 `w` 权限。
+
+创建目录。如果 `recursive` 为 true，则会创建目录及其子目录。
+
+### `obj:remove(path: string)`
+
+> 版本：0.3.0
+
+需要 `w` 权限。
+
+删除文件或目录。
+
+### `obj:read_dir(path: string) -> (List<string>, List<string>)`
+
+> 版本：0.3.0
+
+返回：(目录列表, 文件列表)
+
+需要 `r` 权限。
+
+读取目录内容。返回目录和文件的元组。
+
 # RequestAccessOptions
  
-| 字段名         | 类型                                | 默认值  | 说明                                                                                        |
-| -------------- | ----------------------------------- | ------- | ------------------------------------------------------------------------------------------- |
-| **permission** | string                              |         | **必填**，权限类型，可选值为 `"r"`, `"w"`, `"rw"`                                           |
-| directory      | string                              | `"."`   | 默认选择的文件夹路径                                                                        |
-| file_name      | string                              | `""`    | 默认选择的文件名                                                                            |
-| filters        | List\<[DialogFilter](#dialogfilter)> | `None`  | 选择文件后缀名的过滤器                                                                      |
-| title          | string                              | `""`    | Dialog标题                                                                                  |
-| folder         | bool                                | `false` | 选择文件夹模式                                                                              |
-| multiple       | bool                                | `false` | 是否可以选择多个文件                                                                        |
-| recursive      | bool                                | `false` | 是否递归授权目录权限，仅在`folder`为true时有效：如果为true，则该目录及其子目录均授权访问      |
-| auto_grant     | bool                                | `false` | 是否自动授权，仅`multiple`为false时有效：如果为true，则如果该目录具有权限，无需弹出Dialog询问 |
+| 字段名         | 类型                                 | 默认值  | 说明                                                                                          |
+| -------------- | ------------------------------------ | ------- | --------------------------------------------------------------------------------------------- |
+| **permission** | string                               |         | **必填**，权限类型，可选值为 `"r"`, `"w"`, `"rw"`                                             |
+| directory      | string                               | `"."`   | 默认选择的文件夹路径                                                                          |
+| file_name      | string                               | `""`    | 默认选择的文件名                                                                              |
+| filters        | List\<[DialogFilter](#dialogfilter)> | `None`  | 选择文件后缀名的过滤器                                                                        |
+| title          | string                               | `""`    | Dialog标题                                                                                    |
+| folder         | bool                                 | `false` | 选择文件夹模式                                                                                |
+| multiple       | bool                                 | `false` | 是否可以选择多个文件                                                                          |
+| recursive      | bool                                 | `false` | 是否递归授权目录权限，仅在`folder`为true时有效：如果为true，则该目录及其子目录均授权访问      |
+| auto_grant     | bool                                 | `false` | 是否自动授权，仅`multiple`为false时有效：如果为true，则如果该目录具有权限，无需弹出Dialog询问 |
 
 
 # DialogFilter
 
-| 字段名         | 类型         | 说明             |
-| -------------- | ------------ | ---------------- |
-| **name**       | string       | **必填**，名称   |
+| 字段名         | 类型          | 说明             |
+| -------------- | ------------- | ---------------- |
+| **name**       | string        | **必填**，名称   |
 | **extensions** | List\<string> | **必填**，后缀名 |

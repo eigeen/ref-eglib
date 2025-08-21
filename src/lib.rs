@@ -1,6 +1,6 @@
 #![allow(clippy::missing_safety_doc)]
 
-use std::ffi::c_void;
+use std::{ffi::c_void, sync::LazyLock};
 
 use reframework_api_rs::prelude::*;
 
@@ -9,10 +9,21 @@ use log::{error, info};
 mod error;
 mod memory;
 mod module;
-mod utils;
+mod util;
+
+pub static TOKIO_RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
+    tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1) // 只使用一个工作线程，模拟单线程行为
+        .enable_all()
+        .build()
+        .unwrap()
+});
 
 fn main_entry() -> anyhow::Result<()> {
     let refapi = RefAPI::instance().unwrap();
+
+    // 初始化Tokio运行时
+    let _ = *TOKIO_RUNTIME;
 
     // 初始化lua回调
     let ok = refapi.param().on_lua_state_created(on_lua_state_created);

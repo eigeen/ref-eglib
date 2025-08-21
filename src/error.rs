@@ -19,11 +19,11 @@ pub enum Error {
     // Config(#[from] crate::config::Error),
     #[error("Memory module error: {0}")]
     Memory(#[from] crate::memory::MemoryError),
+    #[error("Http request error: {0}")]
+    Reqwest(#[from] reqwest::Error),
 
     // #[error("Frida Error: {0}")]
     // Frida(String),
-    // #[error("Lua VM not found")]
-    // LuaVMNotFound,
     #[error("Invalid argument: expected {0}, got {1}")]
     InvalidValue(&'static str, String),
     // #[error("Failed to parse integer from '{0}'")]

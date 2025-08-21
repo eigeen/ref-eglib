@@ -36,6 +36,32 @@ Requires `w` permission.
 
 Writes string content to file. If the path doesn't exist, it will create folders and files. If the file exists, it will overwrite the original file.
 
+### `obj:mkdir(path: string, recursive: bool)`
+
+> Added in 0.3.0
+
+Requires `w` permission.
+
+Creates a directory. If `recursive` is true, it will create the directory and its subdirectories.
+
+### `obj:remove(path: string)`
+
+> Added in 0.3.0
+
+Requires `w` permission.
+
+Removes a file or directory.
+
+### `obj:read_dir(path: string) -> (List<string>, List<string>)`
+
+> Added in 0.3.0
+
+Returns: (directories, files)
+
+Requires `r` permission.
+
+Reads the contents of a directory. Returns a tuple of directories and files.
+
 # RequestAccessOptions
   
 | Field Name     | Type                                 | Default | Description                                                                                                                                     |

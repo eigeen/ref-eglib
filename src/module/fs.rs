@@ -11,7 +11,7 @@ use mlua::prelude::*;
 use parking_lot::Mutex;
 use serde::Deserialize;
 
-use crate::utils;
+use crate::util;
 
 use super::LuaModule;
 
@@ -101,7 +101,7 @@ impl FsModule {
             return (false, String::new());
         };
 
-        let abs_path = utils::normalize_path(path);
+        let abs_path = util::normalize_path(path);
         let abs_path_str = abs_path.to_string_lossy().to_string();
 
         // Helper function to check path matches
@@ -261,7 +261,7 @@ impl LuaUserData for FsService {
                 };
 
                 if let Some(ref dir) = options.directory {
-                    let abs_dir = utils::normalize_path(dir);
+                    let abs_dir = util::normalize_path(dir);
                     options
                         .directory
                         .replace(abs_dir.to_string_lossy().to_string());
@@ -332,7 +332,7 @@ impl LuaUserData for FsService {
                 match result {
                     Some(paths) => {
                         for path in &paths {
-                            let abs_path = utils::normalize_path(path);
+                            let abs_path = util::normalize_path(path);
                             let path_str = if options.folder {
                                 let mut path = abs_path.to_string_lossy().to_string();
                                 path.push_str(if options.recursive { "/**" } else { "/*" });

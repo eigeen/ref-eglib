@@ -1,10 +1,11 @@
 mod fs;
+mod http;
 mod luaptr;
 mod memory;
 mod promise;
 mod time;
 
-use std::sync::{Arc, LazyLock};
+use std::{collections::HashMap, sync::LazyLock};
 
 use mlua::prelude::*;
 use parking_lot::Mutex;
@@ -21,11 +22,10 @@ pub trait LuaModule {
     fn register_library(lua: &mlua::Lua, registry: &mlua::Table) -> mlua::Result<()>;
 }
 
-pub type SharedLua = Arc<Lua>;
-
 #[derive(Default)]
 pub struct EgLib {
-    lua_state: Mutex<Option<SharedLua>>,
+    lua_state: Mutex<Option<Lua>>,
+    task_handles: Mutex<HashMap<u64, tokio::task::JoinHandle<()>>>,
 }
 
 impl LuaModule for EgLib {
@@ -38,6 +38,7 @@ impl LuaModule for EgLib {
         luaptr::LuaPtr::register_library(lua, &core_table)?;
         memory::MemoryModule::register_library(lua, &core_table)?;
         fs::FsModule::register_library(lua, &core_table)?;
+        http::HttpModule::register_library(lua, &core_table)?;
         // privileged instructions
         core_table.set(KEY_PRIVILEGED, lua.create_userdata(Privileged::new())?)?;
         core_table.set(
@@ -88,7 +89,7 @@ impl EgLib {
         }
 
         let mut states = self.lua_state.lock();
-        states.replace(Arc::new(lua));
+        states.replace(lua);
 
         Ok(())
     }
@@ -96,12 +97,37 @@ impl EgLib {
     pub fn unmount(&self, _lua_state: *mut mlua::ffi::lua_State) {
         let mut state = self.lua_state.lock();
         state.take();
+        self.remove_all_task_handles();
+    }
+
+    /// 添加一个tokio任务句柄
+    fn add_task_handle(&self, id: u64, handle: tokio::task::JoinHandle<()>) {
+        log::debug!("add_task_handle: id={}", id);
+        self.task_handles.lock().insert(id, handle);
+    }
+
+    /// 终止并移除一个tokio任务句柄
+    fn remove_task_handle(&self, id: u64) {
+        if let Some(handle) = self.task_handles.lock().remove(&id) {
+            log::debug!("remove_task_handle: id={}", id);
+            handle.abort();
+        };
+    }
+
+    /// 终止并移除所有tokio任务句柄
+    fn remove_all_task_handles(&self) {
+        log::debug!("remove_all_task_handles");
+        let mut handles = self.task_handles.lock();
+        for (id, handle) in handles.drain() {
+            log::debug!("remove_task_handle: id={}", id);
+            handle.abort();
+        }
     }
 
     /// Runs a closure with ReFramework global Lua lock.
-    pub fn run_with_global_lock<F>(lua: &Lua, f: F) -> LuaResult<()>
+    fn run_with_global_lock<F, R>(lua: &Lua, f: F) -> R
     where
-        F: FnOnce(&Lua) -> LuaResult<()>,
+        F: FnOnce(&Lua) -> R,
     {
         let refapi = RefAPI::instance().unwrap();
         // 临时处理，有开销，后续需要修改
@@ -113,12 +139,6 @@ impl EgLib {
     fn get_module(lua: &Lua) -> LuaResult<LuaTable> {
         let globals = lua.globals();
         globals.get(LIB_MODULE_NAME)
-    }
-
-    fn is_privileged(lua: &Lua) -> LuaResult<bool> {
-        let module = Self::get_module(lua)?;
-        let privileged = module.get::<LuaUserDataRef<Privileged>>(KEY_PRIVILEGED)?;
-        Ok(privileged.privileged())
     }
 }
 
@@ -165,10 +185,6 @@ impl Privileged {
         self.key_once = false;
         self.key.clear();
         self.privileged = false;
-    }
-
-    fn privileged(&self) -> bool {
-        self.privileged
     }
 
     fn validate_key(&self, key: &str) -> bool {
