@@ -22,6 +22,7 @@ export default defineConfig({
           { text: "memory", link: "memory" },
           { text: "time", link: "time" },
           { text: "fs", link: "fs" },
+          { text: "datetime", link: "datetime" },
         ],
       },
       {
@@ -32,6 +33,7 @@ export default defineConfig({
           { text: "Instant", link: "instant" },
           { text: "Duration", link: "duration" },
           { text: "FsService", link: "FsService" },
+          { text: "DateTime", link: "DateTime" },
         ],
       },
     ],

@@ -4,7 +4,7 @@ layout: doc
 
 # EgLib API Reference
 
-Plugin version: 0.2.0 
+Plugin version: 0.4.0
 
 ## API Design
 

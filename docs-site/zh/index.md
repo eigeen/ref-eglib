@@ -4,7 +4,7 @@ layout: doc
 
 # EgLib API 参考文档
 
-插件版本：0.2.0
+插件版本：0.4.0
 
 ## API 设计
 
